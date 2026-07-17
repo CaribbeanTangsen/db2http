@@ -108,12 +108,32 @@ python db_to_http.py
 
 ---
 
+## 📦 打包为独立可执行文件
+
+为了便于在没有安装 Python 环境的生产服务器上部署，您可以使用项目自带的 `build.sh` 脚本一键打包：
+
+```bash
+./build.sh
+```
+
+**打包说明与运行方法：**
+1. 脚本会自动激活本地 `.venv` 虚拟环境，补全依赖并利用 `PyInstaller` 将 `db_to_http.py` 编译为单文件可执行二进制程序。
+2. 编译成功后，文件输出在 `dist/db_to_http`。
+3. **特别注意**：运行打包后的程序时，二进制文件同级目录或运行终端的工作路径下仍需存在 `db_to_http.yaml` 配置文件。
+   ```bash
+   cp db_to_http.yaml dist/
+   cd dist
+   ./db_to_http
+   ```
+
+---
+
 ## 📂 项目结构
 
 ```text
-├── db_to_http.py      # 主程序逻辑（包含连接管理器、分批推送、异常自愈与动态重载）
-├── db_to_http.yaml    # 配置文件（数据库连接、HTTP推送地址和SQL查询）
-├── init_test_db.py    # (测试辅助) SQLite 测试数据初始化脚本
-├── test_receiver.py   # (测试辅助) 本地 Mock 接收服务端
+├── db_to_http.py      # 主程序逻辑（包含连接管理器、分批推送、日志滚动和动态重载）
+├── db_to_http.yaml    # 配置文件（数据库连接、日志参数、HTTP推送及SQL查询）
+├── build.sh           # macOS / Linux 一键打包可执行程序脚本
+├── requirements.txt   # 项目依赖包清单
 └── README.md          # 本项目使用说明文档
 ```
