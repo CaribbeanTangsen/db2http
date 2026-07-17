@@ -1,0 +1,89 @@
+name: Build and Release Multi-Platform Executables
+
+on:
+  push:
+    tags:
+      - '*' # 仅在推送任意 Git Tag（如 v1.0.0, release-v2 等）时触发自动打包与发布
+  workflow_dispatch: # 保留手动在 GitHub 页面触发的权限
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact_name: db_to_http-linux-amd64
+            binary_src: dist/db_to_http
+          - os: windows-latest
+            artifact_name: db_to_http-windows-amd64.exe
+            binary_src: dist/db_to_http.exe
+          - os: macos-latest
+            artifact_name: db_to_http-macos-arm64
+            binary_src: dist/db_to_http
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Package Executable with PyInstaller
+      run: |
+        pyinstaller --onefile --clean --name db_to_http db_to_http.py
+
+    - name: Rename Executable for Platform Identification (Unix)
+      if: matrix.os != 'windows-latest'
+      run: |
+        mv ${{ matrix.binary_src }} dist/${{ matrix.artifact_name }}
+
+    - name: Rename Executable for Platform Identification (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        Rename-Item -Path "${{ matrix.binary_src }}" -NewName "${{ matrix.artifact_name }}"
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact_name }}
+        path: dist/${{ matrix.artifact_name }}
+        retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') # 确保只有推送 tag 时才创建 Release
+    permissions:
+      contents: write # 必须赋予写权限以允许创建 Release 和上传包文件
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create Release and Upload Assets
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/db_to_http-linux-amd64/db_to_http-linux-amd64
+          artifacts/db_to_http-windows-amd64.exe/db_to_http-windows-amd64.exe
+          artifacts/db_to_http-macos-arm64/db_to_http-macos-arm64
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

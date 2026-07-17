@@ -110,30 +110,42 @@ python db_to_http.py
 
 ## 📦 打包为独立可执行文件
 
-为了便于在没有安装 Python 环境的生产服务器上部署，您可以使用项目自带的 `build.sh` 脚本一键打包：
-
+### 1. 本地打包 (当前系统)
+对于您当前的操作系统，您可以使用项目自带的 `build.sh` 脚本进行本地一键打包：
 ```bash
 ./build.sh
 ```
+打包成功后，单文件可执行二进制程序将生成在 `dist/` 目录下。
 
-**打包说明与运行方法：**
-1. 脚本会自动激活本地 `.venv` 虚拟环境，补全依赖并利用 `PyInstaller` 将 `db_to_http.py` 编译为单文件可执行二进制程序。
-2. 编译成功后，文件输出在 `dist/db_to_http`。
-3. **特别注意**：运行打包后的程序时，二进制文件同级目录或运行终端的工作路径下仍需存在 `db_to_http.yaml` 配置文件。
-   ```bash
-   cp db_to_http.yaml dist/
-   cd dist
-   ./db_to_http
-   ```
+### 2. GitHub Actions 自动化多平台多架构编译
+项目已预置了 GitHub Actions 自动化构建工作流 [build.yml](file:///Users/lijilong/project/db2http/.github/workflows/build.yml)。
+
+当您向 GitHub 推送任意版本标签（Git Tag，例如 `v1.0.0`、`v2.0` 等）时，工作流会自动触发，在云端干净的环境中并发编译出以下平台和架构的可执行文件：
+- 🐧 **Linux (x86_64)**: `db_to_http-linux-amd64`
+- 🪟 **Windows (x86_64)**: `db_to_http-windows-amd64.exe`
+- 🍏 **macOS (ARM64 Apple Silicon)**: `db_to_http-macos-arm64`
+
+工作流不仅会在 Actions 运行详情中提供 Artifacts 供下载，还会**自动为您创建一个新的 GitHub Release**，并将编译好的三个二进制文件直接挂载到该 Release 的 Assets 列表中，非常便于版本分发和生产部署。同时，您也可以在 GitHub 项目的 Actions 页面手动点击 `Run workflow` 触发打包。
+
+**💡 运行说明：**
+无论在哪个平台运行编译好的可执行程序，均需确保在二进制文件**同级目录**或者当前运行终端的工作路径下存在 `db_to_http.yaml` 配置文件：
+```bash
+# 测试本地 dist 下的程序
+cp db_to_http.yaml dist/
+cd dist
+./db_to_http
+```
 
 ---
 
 ## 📂 项目结构
 
 ```text
+├── .github/workflows/
+│   └── build.yml      # GitHub Actions 多平台多架构自动打包工作流
 ├── db_to_http.py      # 主程序逻辑（包含连接管理器、分批推送、日志滚动和动态重载）
 ├── db_to_http.yaml    # 配置文件（数据库连接、日志参数、HTTP推送及SQL查询）
-├── build.sh           # macOS / Linux 一键打包可执行程序脚本
+├── build.sh           # 本地 macOS / Linux 一键打包脚本
 ├── requirements.txt   # 项目依赖包清单
 └── README.md          # 本项目使用说明文档
 ```
