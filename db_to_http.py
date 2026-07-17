@@ -125,11 +125,67 @@ def json_default(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
+DEFAULT_CONFIG = """# 数据库连接配置
+database:
+  # 数据库类型，支持 "mysql" 或 "sqlite"
+  type: "mysql"
+  
+  # MySQL 配置 (如果 type 是 mysql，则配置以下参数)
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  database_name: "test_db"
+  charset: "utf8mb4"
+
+  # SQLite 配置 (如果 type 是 sqlite，database_name 填写 db 文件的路径，例如: "test.db")
+  # database_name: "test.db"
+
+# 数据推送配置
+push:
+  url: "http://httpbin.org/post"  # 默认使用 httpbin 测试地址，可修改为实际推送地址
+  timeout: 10                     # 请求超时时间（秒）
+  push_interval: 60               # 循环推送时间间隔（秒），如果不循环或只执行一次请设为 0
+  headers:
+    Content-Type: "application/json"
+    Authorization: "Bearer your_token_here" # 可选，授权 Token
+
+# 查询配置
+query:
+  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  batch_size: 100                          # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
+
+# 日志存储与轮转配置
+logging:
+  file_enabled: true              # 是否开启日志文件存储
+  file_path: "logs/db_to_http.log" # 日志输出的文件路径（目录会自动创建）
+  level: "INFO"                   # 日志过滤级别: DEBUG, INFO, WARNING, ERROR
+  rotation_type: "size"           # 轮转策略: "size" (按文件大小) 或 "time" (按时间周期)
+
+  # [策略 1] 按大小轮转 (仅在 rotation_type 为 "size" 时有效)
+  max_bytes: 10485760             # 每个日志文件大小上限 (10MB = 10 * 1024 * 1024)
+  backup_count: 5                 # 保留历史日志文件最大个数
+
+  # [策略 2] 按时间轮转 (仅在 rotation_type 为 "time" 时有效)
+  # when: "D"                     # 默认按天轮转
+  # interval: 1                   # 间隔数，默认 1天
+"""
+
+
 def load_config(config_path):
-    """加载并解析 YAML 配置文件"""
+    """加载并解析 YAML 配置文件。如果不存在则自动生成默认配置并提示退出。"""
     if not os.path.exists(config_path):
-        print(f"错误: 配置文件 '{config_path}' 不存在。")
-        sys.exit(1)
+        print(f"提示: 配置文件 '{config_path}' 不存在，正在自动生成默认配置文件...")
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                f.write(DEFAULT_CONFIG)
+            print(f"成功: 默认配置文件 '{config_path}' 已生成！")
+            print("请根据实际需求修改该配置文件（例如数据库连接凭证和推送 URL），然后再重新运行本程序。")
+            sys.exit(0)
+        except Exception as e:
+            print(f"错误: 自动生成默认配置文件 '{config_path}' 失败: {e}")
+            sys.exit(1)
+
     with open(config_path, 'r', encoding='utf-8') as f:
         try:
             return yaml.safe_load(f)
