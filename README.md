@@ -11,6 +11,7 @@
 - 🛡️ **生产级自愈能力 (Resilience)**：底层捕获网络波动与数据库连接异常，在循环执行模式下若单次任务失败，系统会记录日志并等待下个周期自动重试，而**不会导致守护进程崩溃退出**。
 - 🔄 **配置动态热重载**：周期性任务启动前会自动重新加载配置文件，修改 SQL 查询、推送 URL 或推送间隔，无需重启服务即可立即生效。
 - 📦 **分批推送功能**：支持配置 `batch_size`，将海量数据切分为指定大小的分批发送，防止单个 HTTP POST 包过大导致网络超时或接收端内存溢出。
+- 📅 **动态 SQL 占位符**：支持在 SQL 查询中使用 `{now}`, `{today}`, `{yesterday}`, `{tomorrow}` 等时间/日期占位符（支持自定义格式，例如 `{today:%Y%m%d}` 或 `{now:%H:%M:%S}`），使得每次查询能够动态匹配对应日期的表名或过滤条件。
 - 📝 **结构化日志输出**：集成 Python 标准日志库，自动附带时间戳与日志级别（`INFO` / `WARNING` / `ERROR`）。
 
 ---
@@ -59,7 +60,10 @@ push:
 
 # 查询配置
 query:
-  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  # 要执行的 SQL 查询语句。支持动态日期/时间占位符，例如：
+  # "SELECT * FROM test_table_{today} LIMIT 10" 或者自定义格式 "SELECT * FROM test_table_{today:%Y%m%d} LIMIT 10"
+  # 支持的占位符有: {now}, {today}, {yesterday}, {tomorrow}
+  sql: "SELECT * FROM test_table_{today} LIMIT 10" # 要执行的 SQL 查询语句
   batch_size: 2                            # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
 
 # 日志存储与轮转配置

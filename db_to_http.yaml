@@ -25,7 +25,10 @@ push:
 
 # 查询配置
 query:
-  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  # 要执行的 SQL 查询语句。支持动态日期/时间占位符，例如：
+  # "SELECT * FROM test_table_{today} LIMIT 10" 或者自定义格式 "SELECT * FROM test_table_{today:%Y%m%d} LIMIT 10"
+  # 支持的占位符有: {now}, {today}, {yesterday}, {tomorrow}
+  sql: "SELECT * FROM test_table LIMIT 10"
   batch_size: 100                          # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
 
 # 日志存储与轮转配置

@@ -15,6 +15,7 @@ from decimal import Decimal
 import sqlite3
 import requests
 import yaml
+import re
 
 # 自定义异常类
 class ConfigurationError(Exception):
@@ -152,7 +153,10 @@ push:
 
 # 查询配置
 query:
-  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  # 要执行的 SQL 查询语句。支持动态日期/时间占位符，例如：
+  # "SELECT * FROM test_table_{today} LIMIT 10" 或者自定义格式 "SELECT * FROM test_table_{today:%Y%m%d} LIMIT 10"
+  # 支持的占位符有: {now}, {today}, {yesterday}, {tomorrow}
+  sql: "SELECT * FROM test_table LIMIT 10"
   batch_size: 100                          # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
 
 # 日志存储与轮转配置
@@ -338,6 +342,51 @@ def send_data(push_config, data_payload):
     except Exception as e:
         logger.error(f"推送过程中发生异常: {e}")
         return False
+def format_sql(sql_template):
+    """
+    格式化 SQL 模板中的动态日期/时间占位符。
+    支持的占位符:
+      - {now} / {now:%Y-%m-%d %H:%M:%S} : 当前时间
+      - {today} / {today:%Y-%m-%d} : 今天日期
+      - {yesterday} / {yesterday:%Y-%m-%d} : 昨天日期
+      - {tomorrow} / {tomorrow:%Y-%m-%d} : 明天日期
+    """
+    if not sql_template:
+        return sql_template
+
+    now = datetime.datetime.now()
+    yesterday = now - datetime.timedelta(days=1)
+    tomorrow = now + datetime.timedelta(days=1)
+
+    variables = {
+        "now": (now, "%Y-%m-%d %H:%M:%S"),
+        "today": (now, "%Y-%m-%d"),
+        "yesterday": (yesterday, "%Y-%m-%d"),
+        "tomorrow": (tomorrow, "%Y-%m-%d")
+    }
+
+    pattern = re.compile(r'\{(\w+)(?::([^}]+))?\}')
+
+    def replacer(match):
+        var_name = match.group(1).lower()
+        format_spec = match.group(2)
+
+        if var_name in variables:
+            val, default_format = variables[var_name]
+            fmt = format_spec if format_spec is not None else default_format
+            try:
+                formatted_val = val.strftime(fmt)
+                logger.debug(f"解析占位符: {match.group(0)} -> {formatted_val}")
+                return formatted_val
+            except Exception as e:
+                logger.error(f"格式化日期失败: {match.group(0)}, 错误: {e}")
+                return match.group(0)
+        return match.group(0)
+
+    formatted_sql = pattern.sub(replacer, sql_template)
+    if formatted_sql != sql_template:
+        logger.info(f"SQL 模板已动态格式化为: {formatted_sql}")
+    return formatted_sql
 
 
 def run_once(db_manager, push_config, query_config):
@@ -345,9 +394,12 @@ def run_once(db_manager, push_config, query_config):
     conn = db_manager.get_connection()
 
     # 2. 查询配置
-    sql = query_config.get("sql")
-    if not sql:
+    sql_template = query_config.get("sql")
+    if not sql_template:
         raise ConfigurationError("配置文件中未提供查询 SQL (query.sql)")
+
+    # 格式化动态 SQL 语句
+    sql = format_sql(sql_template)
 
     # 3. 执行查询
     data = query_data(conn, sql)
