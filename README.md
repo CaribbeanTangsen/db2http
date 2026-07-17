@@ -1,0 +1,110 @@
+# db2http - 数据库数据定时推送服务
+
+`db2http` 是一个轻量级、健壮的数据库数据定时推送工具。它能够从配置文件读取数据库与推送地址配置，定期执行 SQL 查询，并将查询结果以 JSON 格式通过 HTTP POST 发送到指定的 Web 接口（支持分批推送）。
+
+---
+
+## 🌟 核心特性
+
+- 📂 **多数据库支持**：原生支持 **MySQL** 与 **SQLite**，配置简单灵活，无须为本地测试搭建繁琐的 MySQL 环境。
+- 🔌 **长连接与复用**：内置连接管理器，自动复用健康的数据库连接；对于 MySQL 自动在推送前执行 `ping(reconnect=True)` 校验，避免频繁建连开销。
+- 🛡️ **生产级自愈能力 (Resilience)**：底层捕获网络波动与数据库连接异常，在循环执行模式下若单次任务失败，系统会记录日志并等待下个周期自动重试，而**不会导致守护进程崩溃退出**。
+- 🔄 **配置动态热重载**：周期性任务启动前会自动重新加载配置文件，修改 SQL 查询、推送 URL 或推送间隔，无需重启服务即可立即生效。
+- 📦 **分批推送功能**：支持配置 `batch_size`，将海量数据切分为指定大小的分批发送，防止单个 HTTP POST 包过大导致网络超时或接收端内存溢出。
+- 📝 **结构化日志输出**：集成 Python 标准日志库，自动附带时间戳与日志级别（`INFO` / `WARNING` / `ERROR`）。
+
+---
+
+## 🛠️ 快速开始
+
+### 1. 环境准备
+项目基于 Python 3 开发。推荐使用已配置好的虚拟环境。
+
+安装必要依赖：
+```bash
+# 进入项目根目录
+pip install -r requirements.txt  # 或手动安装 pyyaml, requests
+# 如果使用 MySQL，请安装 PyMySQL 驱动
+pip install pymysql
+```
+
+### 2. 配置文件说明 (`db_to_http.yaml`)
+配置主要分为 `database` (数据源)、`push` (推送目标) 和 `query` (查询参数) 三部分：
+
+```yaml
+# 数据库连接配置
+database:
+  # 支持 "sqlite" 或 "mysql"
+  type: "sqlite"
+  
+  # SQLite 配置 (如果是 sqlite，database_name 填写 db 文件的路径)
+  database_name: "test.db"
+
+  # MySQL 配置 (如果 type 是 mysql，则启用并配置以下参数)
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  # database_name: "test_db"
+  charset: "utf8mb4"
+
+# 数据推送配置
+push:
+  url: "http://localhost:8080"    # 数据推送的目标 HTTP 接口地址
+  timeout: 10                     # 请求超时时间（秒）
+  push_interval: 10               # 循环推送时间间隔（秒），如果不循环或只执行一次请设为 0
+  headers:
+    Content-Type: "application/json"
+    Authorization: "Bearer your_token_here" # 可选，授权 Token
+
+# 查询配置
+query:
+  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  batch_size: 2                            # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
+```
+
+### 3. 启动程序
+```bash
+python db_to_http.py
+```
+
+---
+
+## 🧪 本地端到端调试指南
+
+为了方便在本地无数据库和无真实 HTTP 接收端的情况下进行调试，项目中包含了一套闭环测试工具：
+
+### 步骤 A：生成测试 SQLite 数据库
+运行数据初始化脚本，在本地生成含有 5 条初始数据的 SQLite 库 `test.db`：
+```bash
+python init_test_db.py
+```
+
+### 步骤 B：启动本地 Mock 接收服务
+启动一个监听在 `8080` 端口的简易 HTTP 服务，用于接收并打印推送过去的 JSON 数据包：
+```bash
+python test_receiver.py
+```
+
+### 步骤 C：启动推送工具
+运行主程序：
+```bash
+python db_to_http.py
+```
+**预期输出：**
+* 推送工具会从 `test.db` 中查询出 5 条数据。
+* 按照配置文件中的 `batch_size: 2`，分三批次（每批 2 条，最后一批 1 条）发送 HTTP POST 到 Mock 接收端。
+* Mock 接收端会实时打印收到的 JSON payload 数据。
+* 推送工具在终端输出 `推送成功! 状态码: 200` 并等待下一个周期重新执行。
+
+---
+
+## 📂 项目结构
+
+```text
+├── db_to_http.py      # 主程序逻辑（包含连接管理器、分批推送、异常自愈与动态重载）
+├── db_to_http.yaml    # 配置文件（数据库连接、HTTP推送地址和SQL查询）
+├── init_test_db.py    # (测试辅助) SQLite 测试数据初始化脚本
+├── test_receiver.py   # (测试辅助) 本地 Mock 接收服务端
+└── README.md          # 本项目使用说明文档
+```

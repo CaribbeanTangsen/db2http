@@ -1,0 +1,29 @@
+# 数据库连接配置
+database:
+  # 数据库类型，支持 "mysql" 或 "sqlite"
+  type: "mysql"
+  
+  # MySQL 配置 (如果 type 是 mysql，则配置以下参数)
+  host: "localhost"
+  port: 3306
+  user: "root"
+  password: "password"
+  database_name: "test_db"
+  charset: "utf8mb4"
+
+  # SQLite 配置 (如果 type 是 sqlite，database_name 填写 db 文件的路径，例如: "test.db")
+  # database_name: "test.db"
+
+# 数据推送配置
+push:
+  url: "http://localhost/post"  # 默认使用 httpbin 测试地址，可修改为实际推送地址
+  timeout: 10                     # 请求超时时间（秒）
+  push_interval: 10               # 循环推送时间间隔（秒），如果不循环或只执行一次请设为 0
+  headers:
+    Content-Type: "application/json"
+    Authorization: "Bearer your_token_here" # 可选，授权 Token
+
+# 查询配置
+query:
+  sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
+  batch_size: 100                          # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
