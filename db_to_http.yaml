@@ -16,9 +16,9 @@ database:
 
 # 数据推送配置
 push:
-  url: "http://localhost/post"  # 默认使用 httpbin 测试地址，可修改为实际推送地址
+  url: "http://httpbin.org/post"  # 默认使用 httpbin 测试地址，可修改为实际推送地址
   timeout: 10                     # 请求超时时间（秒）
-  push_interval: 10               # 循环推送时间间隔（秒），如果不循环或只执行一次请设为 0
+  push_interval: 60               # 循环推送时间间隔（秒），如果不循环或只执行一次请设为 0
   headers:
     Content-Type: "application/json"
     Authorization: "Bearer your_token_here" # 可选，授权 Token
@@ -27,3 +27,19 @@ push:
 query:
   sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
   batch_size: 100                          # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
+
+# 日志存储与轮转配置
+logging:
+  file_enabled: true              # 是否开启日志文件存储
+  file_path: "logs/db_to_http.log" # 日志输出的文件路径（目录会自动创建）
+  level: "INFO"                   # 日志过滤级别: DEBUG, INFO, WARNING, ERROR
+  rotation_type: "size"           # 轮转策略: "size" (按文件大小) 或 "time" (按时间周期)
+
+  # [策略 1] 按大小轮转 (仅在 rotation_type 为 "size" 时有效)
+  max_bytes: 10485760             # 每个日志文件大小上限 (10MB = 10 * 1024 * 1024)
+  backup_count: 5                 # 保留历史日志文件最大个数
+
+  # [策略 2] 按时间轮转 (仅在 rotation_type 为 "time" 时有效)
+  # when 可选值: 'S'(秒), 'M'(分), 'H'(小时), 'D'(天), 'midnight'(每日午夜), 'W0'-'W6'(周一至周日)
+  # when: "D"                     # 默认按天轮转
+  # interval: 1                   # 间隔数，默认 1 天

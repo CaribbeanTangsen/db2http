@@ -61,6 +61,15 @@ push:
 query:
   sql: "SELECT * FROM test_table LIMIT 10" # 要执行的 SQL 查询语句
   batch_size: 2                            # 分批发送大小（如果为 0 或空，则一次性发送所有数据）
+
+# 日志存储与轮转配置
+logging:
+  file_enabled: true              # 是否开启日志文件存储
+  file_path: "logs/db_to_http.log" # 日志文件路径
+  level: "INFO"                   # 日志过滤级别
+  rotation_type: "size"           # 轮转策略: "size" (按大小) 或 "time" (按时间)
+  max_bytes: 10485760             # 单个文件上限 (10MB)
+  backup_count: 5                 # 最大保留历史日志个数
 ```
 
 ### 3. 启动程序

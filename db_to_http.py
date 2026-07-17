@@ -1,3 +1,4 @@
+#!/usr/bin/env script
 #!/usr/bin/env python3
 """
 数据库数据定时推送工具
@@ -15,17 +16,6 @@ import sqlite3
 import requests
 import yaml
 
-# 配置日志
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-logger = logging.getLogger("db2http")
-
 # 自定义异常类
 class ConfigurationError(Exception):
     """配置错误"""
@@ -38,6 +28,86 @@ class DatabaseConnectionError(Exception):
 class DatabaseQueryError(Exception):
     """SQL查询错误"""
     pass
+
+
+def setup_logging(log_config=None):
+    """
+    动态配置日志，支持控制台输出和基于文件大小/时间周期的日志轮转
+    """
+    if not log_config:
+        log_config = {}
+
+    level_name = log_config.get("level", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+
+    # 清除旧的 handler 避免重复日志输出
+    for handler in list(root_logger.handlers):
+        root_logger.removeHandler(handler)
+
+    # 1. 统一的格式化器
+    formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
+    # 2. 控制台 Handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # 3. 抑制第三方请求库的繁杂日志输出，保持主程序日志可读性
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
+
+    # 4. 文件滚动轮转 Handler（如开启）
+    if log_config.get("file_enabled", False):
+        file_path = log_config.get("file_path", "db_to_http.log")
+        rotation_type = log_config.get("rotation_type", "size").lower()
+        backup_count = int(log_config.get("backup_count", 5))
+
+        # 确保日志所在目录存在
+        log_dir = os.path.dirname(file_path)
+        if log_dir and not os.path.exists(log_dir):
+            try:
+                os.makedirs(log_dir, exist_ok=True)
+            except Exception as e:
+                logging.error(f"创建日志目录 {log_dir} 失败: {e}")
+                return
+
+        if rotation_type == "size":
+            from logging.handlers import RotatingFileHandler
+            max_bytes = int(log_config.get("max_bytes", 10485760))  # 默认 10MB
+            try:
+                file_handler = RotatingFileHandler(
+                    file_path,
+                    maxBytes=max_bytes,
+                    backupCount=backup_count,
+                    encoding='utf-8'
+                )
+                file_handler.setFormatter(formatter)
+                root_logger.addHandler(file_handler)
+            except Exception as e:
+                logging.error(f"初始化大小滚动日志失败: {e}")
+        elif rotation_type == "time":
+            from logging.handlers import TimedRotatingFileHandler
+            when = log_config.get("when", "D")
+            interval = int(log_config.get("interval", 1))
+            try:
+                file_handler = TimedRotatingFileHandler(
+                    file_path,
+                    when=when,
+                    interval=interval,
+                    backupCount=backup_count,
+                    encoding='utf-8'
+                )
+                file_handler.setFormatter(formatter)
+                root_logger.addHandler(file_handler)
+            except Exception as e:
+                logging.error(f"初始化时间滚动日志失败: {e}")
+
+
+# 初始化默认的 logger 引用
+logger = logging.getLogger("db2http")
 
 
 # 自定义 JSON 序列化器，用于处理数据库特有的 Decimal, datetime 等数据类型
@@ -58,13 +128,13 @@ def json_default(obj):
 def load_config(config_path):
     """加载并解析 YAML 配置文件"""
     if not os.path.exists(config_path):
-        logger.error(f"配置文件 '{config_path}' 不存在。")
+        print(f"错误: 配置文件 '{config_path}' 不存在。")
         sys.exit(1)
     with open(config_path, 'r', encoding='utf-8') as f:
         try:
             return yaml.safe_load(f)
         except Exception as e:
-            logger.error(f"无法解析 YAML 配置文件: {e}")
+            print(f"错误: 无法解析 YAML 配置文件: {e}")
             sys.exit(1)
 
 
@@ -164,14 +234,14 @@ def query_data(conn, sql):
         if cursor.description is None:
             logger.info("查询未返回任何结果列（可能执行了非查询语句）。")
             return []
-            
+
         columns = [desc[0] for desc in cursor.description]
-        
+
         # 拼装成由 dict 组成的列表
         results = []
         for row in cursor.fetchall():
             results.append(dict(zip(columns, row)))
-        
+
         logger.info(f"查询成功，共获取到 {len(results)} 条数据。")
         return results
     except Exception as e:
@@ -185,19 +255,19 @@ def send_data(push_config, data_payload):
     url = push_config.get("url")
     timeout = push_config.get("timeout", 10)
     headers = push_config.get("headers", {})
-    
+
     if not url:
         logger.error("错误: 配置文件中未提供推送地址 (push.url)")
         return False
-        
+
     logger.info(f"正在向 {url} 发送 POST 请求...")
     try:
         # 使用自定义的 json_default 处理 Decimal, datetime 等对象
         json_data = json.dumps(data_payload, default=json_default, ensure_ascii=False)
-        
+
         # 发送请求，使用 bytes 发送确保编码正确
         response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=timeout)
-        
+
         if 200 <= response.status_code < 300:
             logger.info(f"推送成功! 状态码: {response.status_code}")
             try:
@@ -217,19 +287,19 @@ def send_data(push_config, data_payload):
 def run_once(db_manager, push_config, query_config):
     # 1. 连接数据库
     conn = db_manager.get_connection()
-        
+
     # 2. 查询配置
     sql = query_config.get("sql")
     if not sql:
         raise ConfigurationError("配置文件中未提供查询 SQL (query.sql)")
-        
+
     # 3. 执行查询
     data = query_data(conn, sql)
-    
+
     if not data:
         logger.info("没有查询到数据，无需推送。")
         return
-        
+
     # 4. 推送数据
     batch_size = query_config.get("batch_size", 0)
     if batch_size and batch_size > 0:
@@ -240,7 +310,7 @@ def run_once(db_manager, push_config, query_config):
             batch = data[i:i+batch_size]
             logger.info(f"--- 正在推送第 {i // batch_size + 1} 批数据 (条数: {len(batch)}) ---")
             success = send_data(push_config, batch)
-            
+
             if not success:
                 logger.error(f"第 {i // batch_size + 1} 批数据推送失败，终止当前任务后续批次的推送。")
                 break
@@ -252,14 +322,18 @@ def run_once(db_manager, push_config, query_config):
 def main():
     config_path = "db_to_http.yaml"
     config = load_config(config_path)
-    
+
+    # 1. 首次配置并初始化日志模块
+    log_config = config.get("logging", {})
+    setup_logging(log_config)
+
     db_config = config.get("database", {})
     push_config = config.get("push", {})
     query_config = config.get("query", {})
-    
+
     db_manager = DBConnectionManager(db_config)
     push_interval = push_config.get("push_interval", 0)
-    
+
     try:
         if push_interval and push_interval > 0:
             logger.info(f"已启用循环推送模式，间隔时间: {push_interval} 秒")
@@ -267,27 +341,31 @@ def main():
                 try:
                     # 动态重新加载配置文件，使得修改配置无需重启服务
                     config = load_config(config_path)
+                    
+                    # 热重载日志配置
+                    setup_logging(config.get("logging", {}))
+
                     db_config = config.get("database", {})
                     push_config = config.get("push", {})
                     query_config = config.get("query", {})
-                    
+
                     db_manager.update_config(db_config)
-                    
+
                     # 重新检查推送间隔
                     push_interval = push_config.get("push_interval", 0)
                     if push_interval <= 0:
                         logger.info("检测到循环推送间隔已调整为 0，执行最后一次推送后将退出。")
                         run_once(db_manager, push_config, query_config)
                         break
-                    
+
                     logger.info("开始执行周期性推送任务...")
                     run_once(db_manager, push_config, query_config)
-                    
+
                 except (ConfigurationError, DatabaseConnectionError, DatabaseQueryError) as e:
                     logger.error(f"业务执行失败: {e}")
                 except Exception as e:
                     logger.exception(f"执行周期任务时发生未捕获的异常: {e}")
-                
+
                 logger.info(f"等待 {push_interval} 秒进行下一次推送...")
                 time.sleep(push_interval)
         else:
